@@ -52,8 +52,14 @@ async fn main() {
             info!("Checking for new PRs...");
             // Fetch latest list of repos from DB
             let repos = state_clone.get_repositories().await.unwrap_or_default();
+            let ignored_repos = config_clone.ignored_repositories.clone();
 
             for (owner, repo) in repos {
+                // Skip if this repo is in the ignored list
+                if ignored_repos.iter().any(|(o, r)| o == &owner && r == &repo) {
+                    continue;
+                }
+
                 match github_clone.get_new_prs(&owner, &repo, last_check).await {
                     Ok(prs) => {
                         for pr in prs {

@@ -8,6 +8,7 @@ pub struct Config {
     pub github_token: String,
     pub chat_id: i64,
     pub repositories: Vec<(String, String)>, // (owner, repo)
+    pub ignored_repositories: Vec<(String, String)>, // (owner, repo) - for repos we want to track interactive messages but not auto-post new PRs
 }
 
 impl Config {
@@ -41,11 +42,30 @@ impl Config {
             })
             .unwrap_or_default();
 
+        let ignored_repositories = env::var("GITHUB_IGNORED_REPOS")
+            .map(|repos_str| {
+                repos_str
+                    .split(',')
+                    .map(|s| {
+                        let parts: Vec<&str> = s.split('/').collect();
+                        if parts.len() != 2 {
+                            eprintln!("Invalid ignored repository format: {}", s);
+                            ("".to_string(), "".to_string())
+                        } else {
+                            (parts[0].to_string(), parts[1].to_string())
+                        }
+                    })
+                    .filter(|(o, r)| !o.is_empty() && !r.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Ok(Self {
             telegram_bot_token,
             github_token,
             chat_id,
             repositories,
+            ignored_repositories,
         })
     }
 }

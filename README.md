@@ -28,6 +28,13 @@ A Telegram bot that monitors GitHub repositories for new Pull Requests, tracks t
 - A Telegram Bot Token (from @BotFather)
 - A GitHub Personal Access Token (PAT)
 
+## Configuration
+
+- `GITHUB_REPOS`: Comma-separated list of repositories to **fully monitor** (automatic new PR alerts + interactive tracking).
+- `GITHUB_IGNORED_REPOS`: Comma-separated list of repositories to **ignore for automatic alerts**.
+  - New PRs will **NOT** be auto-posted.
+  - However, you can still manually track PRs from these repos by replying to a link with `/upgrade` or pasting the link if auto-link-detection is enabled.
+
 ### Environment Variables
 
 Environment variables:
@@ -36,6 +43,7 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 GITHUB_TOKEN=your_github_pat
 TELEGRAM_CHAT_ID=target_chat_id
 GITHUB_REPOS=owner/repo1,owner/repo2
+GITHUB_IGNORED_REPOS=owner/repo3,owner/repo4
 DATABASE_URL=sqlite:bot.db
 RUST_LOG=info
 ```
