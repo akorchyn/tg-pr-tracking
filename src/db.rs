@@ -31,7 +31,7 @@ pub struct PrMessage {
 impl Db {
     pub async fn new(database_url: &str) -> Result<Self> {
         let pool = SqlitePool::connect(database_url).await?;
-        let db = Db { pool };
+        let db = Self { pool };
         db.init().await?;
         Ok(db)
     }

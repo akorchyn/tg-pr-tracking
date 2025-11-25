@@ -1,6 +1,6 @@
-use std::env;
-use dotenv::dotenv;
 use anyhow::Result;
+use dotenv::dotenv;
+use std::env;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -14,18 +14,18 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         dotenv().ok();
 
-        let telegram_bot_token = env::var("TELEGRAM_BOT_TOKEN")
-            .expect("TELEGRAM_BOT_TOKEN must be set");
-        let github_token = env::var("GITHUB_TOKEN")
-            .expect("GITHUB_TOKEN must be set");
+        let telegram_bot_token =
+            env::var("TELEGRAM_BOT_TOKEN").expect("TELEGRAM_BOT_TOKEN must be set");
+        let github_token = env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set");
         let chat_id = env::var("TELEGRAM_CHAT_ID")
             .expect("TELEGRAM_CHAT_ID must be set")
             .parse::<i64>()
             .expect("TELEGRAM_CHAT_ID must be a valid integer");
-        
+
         let repositories = env::var("GITHUB_REPOS")
             .map(|repos_str| {
-                repos_str.split(',')
+                repos_str
+                    .split(',')
                     .map(|s| {
                         let parts: Vec<&str> = s.split('/').collect();
                         if parts.len() != 2 {
@@ -41,7 +41,7 @@ impl Config {
             })
             .unwrap_or_default();
 
-        Ok(Config {
+        Ok(Self {
             telegram_bot_token,
             github_token,
             chat_id,

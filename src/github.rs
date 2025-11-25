@@ -1,8 +1,8 @@
-use octocrab::{Octocrab, models::pulls::PullRequest};
 use anyhow::Result;
+use chrono::{DateTime, Utc};
+use octocrab::{models::pulls::PullRequest, Octocrab};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use chrono::{DateTime, Utc};
 
 #[derive(Clone)]
 pub struct GithubClient {
@@ -13,17 +13,21 @@ pub struct GithubClient {
 
 impl GithubClient {
     pub fn new(token: String) -> Result<Self> {
-        let client = Octocrab::builder()
-            .personal_token(token)
-            .build()?;
-        Ok(GithubClient {
+        let client = Octocrab::builder().personal_token(token).build()?;
+        Ok(Self {
             client: Arc::new(client),
             seen_prs: Arc::new(Mutex::new(HashSet::new())),
         })
     }
 
-    pub async fn get_new_prs(&self, owner: &str, repo: &str, since: DateTime<Utc>) -> Result<Vec<PullRequest>> {
-        let issues = self.client
+    pub async fn get_new_prs(
+        &self,
+        owner: &str,
+        repo: &str,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<PullRequest>> {
+        let issues = self
+            .client
             .pulls(owner, repo)
             .list()
             .sort(octocrab::params::pulls::Sort::Created)
@@ -38,20 +42,23 @@ impl GithubClient {
 
         for pr in issues {
             if let Some(created_at) = pr.created_at {
-                if created_at > since {
-                    if !seen.contains(&pr.id.0) {
+                if created_at > since
+                    && !seen.contains(&pr.id.0) {
                         seen.insert(pr.id.0);
                         new_prs.push(pr);
                     }
-                }
             }
         }
 
         Ok(new_prs)
     }
-    
-    pub async fn get_pr_details(&self, owner: &str, repo: &str, pr_number: u64) -> Result<PullRequest> {
+
+    pub async fn get_pr_details(
+        &self,
+        owner: &str,
+        repo: &str,
+        pr_number: u64,
+    ) -> Result<PullRequest> {
         Ok(self.client.pulls(owner, repo).get(pr_number).await?)
     }
 }
-

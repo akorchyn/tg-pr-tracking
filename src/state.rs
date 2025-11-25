@@ -24,8 +24,8 @@ pub struct StateManager {
 }
 
 impl StateManager {
-    pub fn new(db: Db) -> Self {
-        StateManager { db }
+    pub const fn new(db: Db) -> Self {
+        Self { db }
     }
 
     pub async fn add_message(&self, message_id: String, data: PrData) -> Result<()> {
