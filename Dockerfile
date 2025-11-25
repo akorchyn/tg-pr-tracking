@@ -1,11 +1,11 @@
-FROM rust:1.90 as builder
+FROM rust:1.90-trixie as builder
 
 WORKDIR /usr/src/app
 COPY . .
 
 RUN cargo install --path .
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
