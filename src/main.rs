@@ -323,7 +323,7 @@ async fn main() {
             }
 
             last_check = Utc::now();
-            sleep(Duration::from_secs(120)).await;
+            sleep(Duration::from_secs(90)).await;
         }
     });
 
