@@ -74,6 +74,13 @@ impl GithubClient {
             .per_page(100)
             .send()
             .await?
-            .take_items())
+            .take_items()
+            .into_iter()
+            .filter(|review| {
+                review.user.is_some()
+                    && review.user.as_ref().unwrap().r#type != "Bot"
+                    && !review.user.as_ref().unwrap().login.ends_with("[bot]")
+            })
+            .collect())
     }
 }

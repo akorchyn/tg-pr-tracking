@@ -1,5 +1,6 @@
 use chrono::Utc;
 use log::{error, info};
+use std::collections::HashMap;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::{LinkPreviewOptions, MessageId, ParseMode, Recipient};
@@ -206,7 +207,6 @@ async fn main() {
                                     // So we can iterate and overwrite.
 
                                     // Map username -> state
-                                    use std::collections::HashMap;
                                     let mut user_state: HashMap<
                                         String,
                                         octocrab::models::pulls::ReviewState,
