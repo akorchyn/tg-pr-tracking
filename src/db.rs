@@ -153,6 +153,7 @@ impl Db {
         chat_id: i64,
         reviewers: &[String],
         approvals: &[String],
+        changes_requested: &[String],
         comments: &[String],
     ) -> Result<()> {
         // Transactional update
@@ -175,6 +176,11 @@ impl Db {
                 .bind(message_id).bind(chat_id).bind(user)
                 .execute(&mut *tx).await?;
         }
+        for user in changes_requested {
+            sqlx::query("INSERT INTO reactions (message_id, chat_id, username, reaction_type) VALUES (?, ?, ?, 'changes_requested')")
+                .bind(message_id).bind(chat_id).bind(user)
+                .execute(&mut *tx).await?;
+        }
         for user in comments {
             sqlx::query("INSERT INTO reactions (message_id, chat_id, username, reaction_type) VALUES (?, ?, ?, 'comment')")
                 .bind(message_id).bind(chat_id).bind(user)
@@ -189,7 +195,7 @@ impl Db {
         &self,
         message_id: &str,
         chat_id: i64,
-    ) -> Result<(Vec<String>, Vec<String>, Vec<String>)> {
+    ) -> Result<(Vec<String>, Vec<String>, Vec<String>, Vec<String>)> {
         let rows = sqlx::query(
             "SELECT username, reaction_type FROM reactions WHERE message_id = ? AND chat_id = ?",
         )
@@ -200,6 +206,7 @@ impl Db {
 
         let mut reviewers = Vec::new();
         let mut approvals = Vec::new();
+        let mut changes_requested = Vec::new();
         let mut comments = Vec::new();
 
         for row in rows {
@@ -208,12 +215,13 @@ impl Db {
             match r_type.as_str() {
                 "reviewer" => reviewers.push(username),
                 "approval" => approvals.push(username),
+                "changes_requested" => changes_requested.push(username),
                 "comment" => comments.push(username),
                 _ => {}
             }
         }
 
-        Ok((reviewers, approvals, comments))
+        Ok((reviewers, approvals, changes_requested, comments))
     }
 
     pub async fn is_pr_seen(&self, key: &str) -> Result<bool> {

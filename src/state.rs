@@ -11,6 +11,7 @@ pub struct PrData {
     pub pr_number: u64,
     pub reviewers: Vec<String>,
     pub approvals: Vec<String>,
+    pub changes_requested: Vec<String>,
     pub comments: Vec<String>,
     pub is_merged: bool,
     pub is_draft: bool,
@@ -55,6 +56,7 @@ impl StateManager {
                 data.chat_id,
                 &data.reviewers,
                 &data.approvals,
+                &data.changes_requested,
                 &data.comments,
             )
             .await?;
@@ -69,7 +71,7 @@ impl StateManager {
     pub async fn get_pr_data(&self, message_id: String, chat_id: i64) -> Result<Option<PrData>> {
         let msg = self.db.get_pr_message(&message_id, chat_id).await?;
         if let Some(m) = msg {
-            let (reviewers, approvals, comments) =
+            let (reviewers, approvals, changes_requested, comments) =
                 self.db.get_reactions(&message_id, chat_id).await?;
             Ok(Some(PrData {
                 pr_url: m.pr_url,
@@ -79,6 +81,7 @@ impl StateManager {
                 pr_number: m.pr_number as u64,
                 reviewers,
                 approvals,
+                changes_requested,
                 comments,
                 is_merged: m.is_merged,
                 is_draft: m.is_draft,

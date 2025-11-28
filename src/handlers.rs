@@ -196,6 +196,7 @@ pub async fn handle_message(
                             pr_number,
                             reviewers: vec![],
                             approvals: vec![],
+                            changes_requested: vec![],
                             comments: vec![],
                             is_merged: pr.merged_at.is_some(),
                             is_draft: pr.draft.unwrap_or(false),
@@ -242,7 +243,7 @@ pub async fn handle_message(
 
 I monitor GitHub PRs and track review status via emojis or commands.
 
-<b>Commands (reply to tracked message):</b>
+<b>Commands or Reactions (reply to tracked message):</b>
 /review - Mark as reviewing (❤️)
 /approve - Approve PR (👍)
 /comment - Add comment status (👌)
@@ -250,6 +251,8 @@ I monitor GitHub PRs and track review status via emojis or commands.
 /merge - Mark as merged (💯)
 /draft - Mark as draft (🍳)
 /addressed or /rereview - Request re-review (🙏)
+
+<b>Note:</b> Review status (Approved, Changes Requested, etc.) is automatically synced from GitHub. Manual commands are useful for quick updates but GitHub state will override them on the next sync.
 
 <b>General Commands:</b>
 /upgrade (reply to link) - Replace link with tracked message
@@ -391,6 +394,7 @@ I monitor GitHub PRs and track review status via emojis or commands.
                             pr_number,
                             reviewers: vec![],
                             approvals: vec![],
+                            changes_requested: vec![],
                             comments: vec![],
                             is_merged: pr.merged_at.is_some(),
                             is_draft: pr.draft.unwrap_or(false),
@@ -437,7 +441,7 @@ fn extract_pr_info(text: &str) -> Option<(String, String, u64)> {
     None
 }
 
-fn generate_message_text(data: &PrData) -> String {
+pub fn generate_message_text(data: &PrData) -> String {
     let mut text = format!(
         "<b>PR:</b> <a href=\"{}\">{}</a>\n",
         data.pr_url, data.title
@@ -465,6 +469,12 @@ fn generate_message_text(data: &PrData) -> String {
         text.push_str(&format!(
             "👍 <b>Approved:</b> {}\n",
             data.approvals.join(", ")
+        ));
+    }
+    if !data.changes_requested.is_empty() {
+        text.push_str(&format!(
+            "❌ <b>Changes Requested:</b> {}\n",
+            data.changes_requested.join(", ")
         ));
     }
     if !data.comments.is_empty() {

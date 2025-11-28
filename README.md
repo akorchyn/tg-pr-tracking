@@ -15,7 +15,11 @@ A Telegram bot that monitors GitHub repositories for new Pull Requests, tracks t
   - 💯 / `/merge` - Mark as "Merged"
   - 🍳 / `/draft` - Toggle "Draft" status
   - 🙏 / `/addressed` / `/rereview` - Request re-review (clears previous comments)
-- **Interactive Updates**: The bot updates the message text in real-time to reflect the current status (Reviewers, Approvals, Comments).
+- **Real-Time Synchronization**: The bot periodically syncs with GitHub to fetch the latest:
+  - Review statuses (Approved, Changes Requested, Commented)
+  - Draft status
+  - This ensures the message always reflects the actual state on GitHub, treating GitHub as the source of truth.
+- **Interactive Updates**: The bot updates the message text in real-time to reflect the current status (Reviewers, Approvals, Changes Requested, Comments).
 - **Auto-Cleanup**: Automatically deletes messages for PRs that are closed or merged on GitHub.
 - **Link Parsing**: If a user posts a GitHub PR link, the bot can replace it with a tracked message (via `/upgrade` or auto-detection).
 

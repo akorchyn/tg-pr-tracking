@@ -42,11 +42,10 @@ impl GithubClient {
 
         for pr in issues {
             if let Some(created_at) = pr.created_at {
-                if created_at > since
-                    && !seen.contains(&pr.id.0) {
-                        seen.insert(pr.id.0);
-                        new_prs.push(pr);
-                    }
+                if created_at > since && !seen.contains(&pr.id.0) {
+                    seen.insert(pr.id.0);
+                    new_prs.push(pr);
+                }
             }
         }
 
@@ -60,5 +59,21 @@ impl GithubClient {
         pr_number: u64,
     ) -> Result<PullRequest> {
         Ok(self.client.pulls(owner, repo).get(pr_number).await?)
+    }
+
+    pub async fn get_pr_reviews(
+        &self,
+        owner: &str,
+        repo: &str,
+        pr_number: u64,
+    ) -> Result<Vec<octocrab::models::pulls::Review>> {
+        Ok(self
+            .client
+            .pulls(owner, repo)
+            .list_reviews(pr_number)
+            .per_page(100)
+            .send()
+            .await?
+            .take_items())
     }
 }

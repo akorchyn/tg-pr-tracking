@@ -2,7 +2,7 @@ use chrono::Utc;
 use log::{error, info};
 use std::sync::Arc;
 use teloxide::prelude::*;
-use teloxide::types::{MessageId, Recipient};
+use teloxide::types::{LinkPreviewOptions, MessageId, ParseMode, Recipient};
 use tokio::time::{sleep, Duration};
 
 mod config;
@@ -95,6 +95,33 @@ async fn main() {
                                 .await
                             {
                                 Ok(sent_msg) => {
+                                    // Fetch initial reviews (if any, though usually none on creation)
+                                    let mut approvals = vec![];
+                                    let mut changes_requested = vec![];
+                                    let mut comments = vec![];
+
+                                    if let Ok(reviews) =
+                                        github_clone.get_pr_reviews(&owner, &repo, pr.number).await
+                                    {
+                                        for review in reviews {
+                                            if let Some(user) = review.user {
+                                                let username = user.login;
+                                                match review.state {
+                                                    Some(octocrab::models::pulls::ReviewState::Approved) => {
+                                                        if !approvals.contains(&username) { approvals.push(username); }
+                                                    },
+                                                    Some(octocrab::models::pulls::ReviewState::ChangesRequested) => {
+                                                        if !changes_requested.contains(&username) { changes_requested.push(username); }
+                                                    },
+                                                    Some(octocrab::models::pulls::ReviewState::Commented) => {
+                                                        if !comments.contains(&username) { comments.push(username); }
+                                                    },
+                                                    _ => {}
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     // We don't automatically track *messages* sent by this loop as "interactive" unless we want to.
                                     // But the user requirements say "If it sees a new PR included, it will send a message... The review statuses are tracked using reactions"
                                     // So YES, we must track this message in DB so reactions work.
@@ -106,8 +133,9 @@ async fn main() {
                                         repo: format!("{}/{}", owner, repo),
                                         pr_number: pr.number,
                                         reviewers: vec![],
-                                        approvals: vec![],
-                                        comments: vec![],
+                                        approvals,
+                                        changes_requested,
+                                        comments,
                                         is_merged: pr.merged_at.is_some(),
                                         is_draft: pr.draft.unwrap_or(false),
                                         re_review_requested: false,
@@ -137,6 +165,130 @@ async fn main() {
                             let is_closed =
                                 matches!(pr.state, Some(octocrab::models::IssueState::Closed));
                             let is_merged = pr.merged_at.is_some();
+
+                            // Update Draft status if changed
+                            let current_draft = pr.draft.unwrap_or(false);
+                            let mut data_changed = false;
+                            let current_data_opt = state_clone
+                                .get_pr_data(msg.message_id.clone(), msg.chat_id)
+                                .await
+                                .unwrap_or(None);
+
+                            if let Some(mut data) = current_data_opt.clone() {
+                                // Check draft status
+                                if msg.is_draft != current_draft {
+                                    info!(
+                                        "PR {}/{}#{} draft status changed to {}. Updating...",
+                                        msg.repo_owner, msg.repo_name, msg.pr_number, current_draft
+                                    );
+                                    data.is_draft = current_draft;
+                                    data_changed = true;
+                                }
+
+                                // Sync reviews from GitHub
+                                // Fetch reviews and requested reviewers
+                                let mut new_approvals = vec![];
+                                let mut new_changes_requested = vec![];
+                                let mut new_comments = vec![];
+                                let mut new_reviewers = vec![]; // Requested reviewers
+
+                                // 1. Get actual reviews
+                                if let Ok(reviews) = github_clone
+                                    .get_pr_reviews(
+                                        &msg.repo_owner,
+                                        &msg.repo_name,
+                                        msg.pr_number as u64,
+                                    )
+                                    .await
+                                {
+                                    // We need to deduplicate by user, taking the LATEST review state
+                                    // Reviews are returned chronologically? API docs say "The list of reviews returns in chronological order."
+                                    // So we can iterate and overwrite.
+
+                                    // Map username -> state
+                                    use std::collections::HashMap;
+                                    let mut user_state: HashMap<
+                                        String,
+                                        octocrab::models::pulls::ReviewState,
+                                    > = HashMap::new();
+
+                                    for review in reviews {
+                                        if let Some(user) = review.user {
+                                            if let Some(state) = review.state {
+                                                user_state.insert(user.login, state);
+                                            }
+                                        }
+                                    }
+
+                                    for (user, state) in user_state {
+                                        match state {
+                                             octocrab::models::pulls::ReviewState::Approved => new_approvals.push(user),
+                                             octocrab::models::pulls::ReviewState::ChangesRequested => new_changes_requested.push(user),
+                                             octocrab::models::pulls::ReviewState::Commented => new_comments.push(user),
+                                             _ => {} // Dismissed, Pending, etc.
+                                         }
+                                    }
+                                }
+
+                                // Sort for consistent comparison
+                                new_approvals.sort();
+                                new_changes_requested.sort();
+                                new_comments.sort();
+                                new_reviewers.sort();
+
+                                // Compare with existing data (which should also be sorted if we want strict equality, but vector equality checks elements)
+                                // Actually, PrData vectors might not be sorted. Let's sort them for comparison.
+                                data.approvals.sort();
+                                data.changes_requested.sort();
+                                data.comments.sort();
+                                data.reviewers.sort();
+
+                                if data.approvals != new_approvals
+                                    || data.changes_requested != new_changes_requested
+                                    || data.comments != new_comments
+                                    || data.reviewers != new_reviewers
+                                {
+                                    info!(
+                                        "PR {}/{}#{} review status changed. Syncing...",
+                                        msg.repo_owner, msg.repo_name, msg.pr_number
+                                    );
+                                    data.approvals = new_approvals;
+                                    data.changes_requested = new_changes_requested;
+                                    data.comments = new_comments;
+                                    data.reviewers = new_reviewers;
+                                    data_changed = true;
+                                }
+
+                                if data_changed {
+                                    if let Err(e) = state_clone
+                                        .update_pr_data(msg.message_id.clone(), data.clone())
+                                        .await
+                                    {
+                                        error!("Failed to update PR data in DB: {}", e);
+                                    } else {
+                                        // Update chat message
+                                        let new_text = handlers::generate_message_text(&data);
+                                        if let Err(e) = bot_clone
+                                            .edit_message_text(
+                                                ChatId(msg.chat_id),
+                                                MessageId(msg.message_id.parse().unwrap_or(0)),
+                                                new_text,
+                                            )
+                                            .parse_mode(ParseMode::Html)
+                                            .link_preview_options(LinkPreviewOptions {
+                                                is_disabled: true,
+                                                url: None,
+                                                prefer_small_media: false,
+                                                prefer_large_media: false,
+                                                show_above_text: false,
+                                            })
+                                            .await
+                                        {
+                                            error!("Failed to update PR message in chat: {}", e);
+                                        }
+                                    }
+                                }
+                            }
 
                             if is_closed || is_merged {
                                 info!(
@@ -171,7 +323,7 @@ async fn main() {
             }
 
             last_check = Utc::now();
-            sleep(Duration::from_secs(60)).await;
+            sleep(Duration::from_secs(120)).await;
         }
     });
 
