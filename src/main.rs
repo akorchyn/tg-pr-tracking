@@ -1,6 +1,5 @@
 use chrono::Utc;
 use log::{error, info};
-use std::collections::HashMap;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::{LinkPreviewOptions, MessageId, ParseMode, Recipient};
@@ -207,6 +206,7 @@ async fn main() {
                                     // So we can iterate and overwrite.
 
                                     // Map username -> state
+                                    use std::collections::HashMap;
                                     let mut user_state: HashMap<
                                         String,
                                         octocrab::models::pulls::ReviewState,
@@ -214,6 +214,12 @@ async fn main() {
 
                                     for review in reviews {
                                         if let Some(user) = review.user {
+                                            // Ignore bots
+                                            if user.r#type == "Bot" || user.login.ends_with("[bot]")
+                                            {
+                                                continue;
+                                            }
+
                                             if let Some(state) = review.state {
                                                 user_state.insert(user.login, state);
                                             }
@@ -292,25 +298,117 @@ async fn main() {
 
                             if is_closed || is_merged {
                                 info!(
-                                    "PR {}/{}#{} is closed/merged. Removing...",
+                                    "PR {}/{}#{} is closed/merged. Cleaning up...",
                                     msg.repo_owner, msg.repo_name, msg.pr_number
                                 );
-                                // Delete message from chat
-                                if let Err(e) = bot_clone
-                                    .delete_message(
-                                        ChatId(msg.chat_id),
-                                        MessageId(msg.message_id.parse().unwrap_or(0)),
-                                    )
-                                    .await
-                                {
-                                    error!("Failed to delete message: {}", e);
+
+                                let message_id = MessageId(msg.message_id.parse().unwrap_or(0));
+                                let chat_id = ChatId(msg.chat_id);
+                                let status_text = if is_merged { "MERGED" } else { "CLOSED" };
+
+                                // 1. Try to delete first (works only if <48h old)
+                                let delete_result =
+                                    bot_clone.delete_message(chat_id, message_id).await;
+
+                                match &delete_result {
+                                    Ok(_) => {
+                                        info!(
+                                            "PR {}/{}#{}: Message deleted successfully",
+                                            msg.repo_owner, msg.repo_name, msg.pr_number
+                                        );
+                                    }
+                                    Err(e) => {
+                                        info!(
+                                            "PR {}/{}#{}: Could not delete message (>48h?): {}. Trying to edit...",
+                                            msg.repo_owner, msg.repo_name, msg.pr_number, e
+                                        );
+
+                                        // 2. If delete failed, try to edit
+                                        if let Some(mut data) = current_data_opt {
+                                            data.is_merged = is_merged;
+
+                                            let final_text = if is_merged {
+                                                format!(
+                                                    "✅ <b>MERGED</b>\n\n<s>{}</s>",
+                                                    handlers::generate_message_text(&data)
+                                                )
+                                            } else {
+                                                format!(
+                                                    "🚫 <b>CLOSED</b>\n\n<s>{}</s>",
+                                                    handlers::generate_message_text(&data)
+                                                )
+                                            };
+
+                                            let edit_result = bot_clone
+                                                .edit_message_text(chat_id, message_id, final_text)
+                                                .parse_mode(ParseMode::Html)
+                                                .link_preview_options(LinkPreviewOptions {
+                                                    is_disabled: true,
+                                                    url: None,
+                                                    prefer_small_media: false,
+                                                    prefer_large_media: false,
+                                                    show_above_text: false,
+                                                })
+                                                .await;
+
+                                            match &edit_result {
+                                                Ok(_) => {
+                                                    info!(
+                                                        "PR {}/{}#{}: Message edited to show {} status",
+                                                        msg.repo_owner, msg.repo_name, msg.pr_number, status_text
+                                                    );
+                                                }
+                                                Err(edit_err) => {
+                                                    // 3. If edit also failed, reply with a message to remove
+                                                    info!(
+                                                        "PR {}/{}#{}: Could not edit message: {}. Sending reply...",
+                                                        msg.repo_owner, msg.repo_name, msg.pr_number, edit_err
+                                                    );
+
+                                                    let reply_text = format!(
+                                                        "⚠️ PR #{} is now <b>{}</b>. Please remove the message above.",
+                                                        msg.pr_number, status_text
+                                                    );
+                                                    match bot_clone
+                                                        .send_message(chat_id, reply_text)
+                                                        .parse_mode(ParseMode::Html)
+                                                        .reply_parameters(
+                                                            teloxide::types::ReplyParameters::new(
+                                                                message_id,
+                                                            ),
+                                                        )
+                                                        .await
+                                                    {
+                                                        Ok(_) => {
+                                                            info!(
+                                                                "PR {}/{}#{}: Sent reply requesting removal",
+                                                                msg.repo_owner, msg.repo_name, msg.pr_number
+                                                            );
+                                                        }
+                                                        Err(reply_err) => {
+                                                            error!(
+                                                                "PR {}/{}#{}: Failed to send reply: {}",
+                                                                msg.repo_owner, msg.repo_name, msg.pr_number, reply_err
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
+
                                 // Remove from DB tracking
                                 if let Err(e) = state_clone
                                     .remove_message(&msg.message_id, msg.chat_id)
                                     .await
                                 {
                                     error!("Failed to remove message from DB: {}", e);
+                                } else {
+                                    info!(
+                                        "PR {}/{}#{}: Removed from DB tracking",
+                                        msg.repo_owner, msg.repo_name, msg.pr_number
+                                    );
                                 }
                             }
                         }

@@ -77,9 +77,7 @@ pub async fn handle_reaction(
                 // Managed by is_merged logic below?
                 // actually we should handle it here or below.
                 // Current logic handles toggles below.
-            } else if emoji.starts_with(cooking) {
-                // Managed below
-            } else if emoji.starts_with(pray) {
+            } else if emoji.starts_with(cooking) || emoji.starts_with(pray) {
                 // Managed below
             } else {
                 // It was a comment
