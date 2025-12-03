@@ -175,6 +175,17 @@ async fn main() {
                                 .unwrap_or(None);
 
                             if let Some(mut data) = current_data_opt.clone() {
+                                // Check title changes
+                                let current_title = pr.title.clone().unwrap_or_default();
+                                if data.title != current_title {
+                                    info!(
+                                        "PR {}/{}#{} title changed from '{}' to '{}'. Updating...",
+                                        msg.repo_owner, msg.repo_name, msg.pr_number, data.title, current_title
+                                    );
+                                    data.title = current_title;
+                                    data_changed = true;
+                                }
+
                                 // Check draft status
                                 if msg.is_draft != current_draft {
                                     info!(

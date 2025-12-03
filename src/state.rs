@@ -60,11 +60,11 @@ impl StateManager {
                 &data.comments,
             )
             .await?;
-
+        
         // Mark seen
         let key = format!("{}#{}", data.repo, data.pr_number);
         self.db.mark_pr_seen(&key).await?;
-
+        
         Ok(())
     }
 
@@ -101,11 +101,11 @@ impl StateManager {
         let key = format!("{}#{}", repo, pr_number);
         self.db.is_pr_seen(&key).await
     }
-
+    
     pub async fn add_repository(&self, owner: &str, name: &str) -> Result<()> {
         self.db.add_repository(owner, name).await
     }
-
+    
     pub async fn get_repositories(&self) -> Result<Vec<(String, String)>> {
         let repos = self.db.get_repositories().await?;
         Ok(repos.into_iter().map(|r| (r.owner, r.name)).collect())
